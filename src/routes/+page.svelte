@@ -932,7 +932,7 @@
   .bc-time  { font-size: 12px; color: #e8a020; font-weight: 600; margin-top: 2px; }
   .bc-amount{ font-size: 12px; color: #56a820; margin-top: 2px; font-weight: 600; }
 
-  /* Status badges */
+  /* Status badge */
   .status-badge { padding: 4px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
   .status-badge.confirmed { background: #e8f5e9; color: #2e7d32; }
   .status-badge.cancelled { background: #ffeaea; color: #c62828; }
