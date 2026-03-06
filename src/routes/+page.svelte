@@ -2,6 +2,15 @@
   import { onMount } from 'svelte';
   import Dexie from 'dexie';
 
+  // ── Register Service Worker (PWA Offline) ─────────────
+  if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').then(() => {
+      console.log('✅ Service Worker registered — app works offline!');
+    }).catch(err => {
+      console.log('SW registration failed:', err);
+    });
+  }
+
   // ── Database ──────────────────────────────────────────
   const db = new Dexie('HallBookings');
   db.version(2).stores({

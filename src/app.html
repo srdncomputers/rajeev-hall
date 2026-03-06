@@ -2,7 +2,26 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+
+		<!-- PWA Meta Tags -->
+		<link rel="manifest" href="/manifest.json" />
+		<meta name="theme-color" content="#1a2332" />
+
+		<!-- iOS PWA Support -->
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<meta name="apple-mobile-web-app-title" content="Hall Manager" />
+		<link rel="apple-touch-icon" href="/icon-192.png" />
+
+		<!-- App info -->
+		<meta name="description" content="Marriage Hall Booking Manager — works offline!" />
+		<meta name="application-name" content="Hall Manager" />
+
+		<!-- Icons -->
+		<link rel="icon" href="/icon-192.png" />
+
+		<title>Hall Manager</title>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
