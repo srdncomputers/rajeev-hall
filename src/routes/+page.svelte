@@ -13,10 +13,13 @@
 
   // ── Database ──────────────────────────────────────────
   const db = new Dexie('HallBookings');
-  db.version(3).stores({
-    bookings: '++id, date, client_name, phone, event_type, start_time, end_time, advance_paid, total_amount, discount_type, discount_value, final_amount, status, notes, created_at',
+  db.version(4).stores({
+    bookings: '++id, date, client_name, phone, event_type, start_time, end_time, advance_paid, total_amount, discount_type, discount_value, final_amount, hall_capacity, booked_capacity, status, notes, created_at',
     settings: 'key',
   });
+
+  // Hall max capacity from settings
+  let hallCapacity = $state(500);
 
   // ── State ─────────────────────────────────────────────
   let currentPage  = $state('calendar');
@@ -28,6 +31,7 @@
   // Settings
   let showSettings    = $state(false);
   let settingHallName = $state('');
+  let settingCapacity = $state(500);
 
   // Booking form
   let showForm     = $state(false);
@@ -45,6 +49,7 @@
   let fTotal       = $state(0);
   let fNotes       = $state('');
   let fStatus      = $state('Confirmed');
+  let fCapacity      = $state(0);   // booked capacity for this event
   let fDiscountType  = $state('none');  // none, percent, amount
   let fDiscountValue = $state(0);
 
@@ -109,6 +114,9 @@
     const savedName = await db.settings.get('hall_name');
     if (savedName) hallName = savedName.value;
     settingHallName = hallName;
+    const savedCap = await db.settings.get('hall_capacity');
+    if (savedCap) hallCapacity = savedCap.value;
+    settingCapacity = hallCapacity;
   });
 
   // ── Helpers ───────────────────────────────────────────
@@ -159,9 +167,11 @@
   async function saveSettings() {
     if (!settingHallName.trim()) return;
     await db.settings.put({ key: 'hall_name', value: settingHallName.trim() });
+    await db.settings.put({ key: 'hall_capacity', value: +settingCapacity });
     hallName = settingHallName.trim();
+    hallCapacity = +settingCapacity;
     showSettings = false;
-    showToast('✅ Hall name saved!');
+    showToast('✅ Settings saved!');
   }
 
   // ── Booking CRUD ──────────────────────────────────────
@@ -176,6 +186,7 @@
     fEndTime     = '22:00';
     fAdvance       = 0;
     fTotal         = 0;
+    fCapacity      = 0;
     fDiscountType  = 'none';
     fDiscountValue = 0;
     fNotes         = '';
@@ -195,6 +206,7 @@
     fEndTime     = b.end_time   || '22:00';
     fAdvance       = b.advance_paid || 0;
     fTotal         = b.total_amount || 0;
+    fCapacity      = b.booked_capacity || 0;
     fDiscountType  = b.discount_type || 'none';
     fDiscountValue = b.discount_value || 0;
     fNotes         = b.notes || '';
@@ -217,6 +229,8 @@
       end_time:     fEndTime,
       advance_paid:   +fAdvance,
       total_amount:   +fTotal,
+      hall_capacity:  hallCapacity,
+      booked_capacity: +fCapacity,
       discount_type:  fDiscountType,
       discount_value: +fDiscountValue,
       final_amount:   fFinalAmount(),
@@ -497,6 +511,20 @@
             </div>
           </div>
 
+          <div class="form-group" style="margin-top:14px">
+            <label>👥 Hall Maximum Capacity (people)</label>
+            <input
+              type="number"
+              bind:value={settingCapacity}
+              placeholder="e.g. 500"
+              min="1"
+              style="font-size:16px;font-weight:600"
+            >
+            <div style="font-size:12px;color:#667788;margin-top:4px">
+              Used to warn when booking exceeds capacity
+            </div>
+          </div>
+
           <div class="preview-box">
             <div style="font-size:11px;color:#667788;margin-bottom:6px">PREVIEW</div>
             <div style="font-size:16px;font-weight:800;color:#1a2332">{settingHallName || 'Hall Name'}</div>
@@ -558,6 +586,31 @@
             <div class="di-label">📞 Phone</div>
             <div class="di-value">{viewBooking.phone || '—'}</div>
           </div>
+          {#if viewBooking.booked_capacity > 0}
+            {@const cap = viewBooking.hall_capacity || hallCapacity}
+            {@const pct = Math.round(viewBooking.booked_capacity / cap * 100)}
+            <div class="detail-item full">
+              <div class="di-label">👥 Guest Capacity</div>
+              <div class="di-value" class:cap-text-over={pct > 100}>
+                {viewBooking.booked_capacity} / {cap} guests
+                {#if pct > 100}
+                  ⚠️ OVER CAPACITY!
+                {:else if pct > 70}
+                  🟡 {pct}% full
+                {:else}
+                  🟢 {pct}% full
+                {/if}
+              </div>
+              <div class="cap-bar-track" style="margin-top:8px">
+                <div class="cap-bar-fill"
+                  class:cap-ok={pct<=70}
+                  class:cap-warn={pct>70&&pct<=100}
+                  class:cap-over={pct>100}
+                  style="width:{Math.min(pct,100)}%">
+                </div>
+              </div>
+            </div>
+          {/if}
           <div class="detail-item">
             <div class="di-label">💰 Total Amount</div>
             <div class="di-value green">{fmt(viewBooking.total_amount)}</div>
@@ -672,6 +725,37 @@
               <label>Advance Paid (₹)</label>
               <input type="number" bind:value={fAdvance} min="0">
             </div>
+          </div>
+
+          <!-- Capacity Section -->
+          <div class="capacity-section">
+            <div class="capacity-title">👥 Guest Capacity</div>
+            <div class="form-group">
+              <label>Number of Guests Booked For</label>
+              <input type="number" bind:value={fCapacity} min="0" placeholder="e.g. 200">
+            </div>
+            {#if fCapacity > 0}
+              {@const pct = Math.round(fCapacity / hallCapacity * 100)}
+              <div class="capacity-bar-wrap">
+                <div class="cap-bar-track">
+                  <div class="cap-bar-fill"
+                    class:cap-ok={pct <= 70}
+                    class:cap-warn={pct > 70 && pct <= 100}
+                    class:cap-over={pct > 100}
+                    style="width:{Math.min(pct,100)}%">
+                  </div>
+                </div>
+                <div class="cap-info" class:cap-text-over={pct > 100}>
+                  {#if pct > 100}
+                    ⚠️ OVER CAPACITY! {fCapacity} guests booked but hall holds only {hallCapacity}!
+                  {:else if pct > 70}
+                    🟡 {fCapacity} / {hallCapacity} guests ({pct}%) — Hall filling up!
+                  {:else}
+                    🟢 {fCapacity} / {hallCapacity} guests ({pct}%) — Good
+                  {/if}
+                </div>
+              </div>
+            {/if}
           </div>
 
           <!-- Discount Section -->
@@ -947,5 +1031,18 @@
   .dp-row      { display: flex; justify-content: space-between; font-size: 13px; color: #667788; padding: 4px 0; }
   .discount-row{ color: #e05252; font-weight: 600; }
   .final-row   { color: #1a2332; font-weight: 800; font-size: 15px; border-top: 1px solid #e8eef5; margin-top: 6px; padding-top: 8px; }
+
+
+  /* Capacity Section */
+  .capacity-section  { background: #e8f5e9; border: 1.5px solid #56d364; border-radius: 12px; padding: 14px; }
+  .capacity-title    { font-size: 13px; font-weight: 700; color: #2e7d32; margin-bottom: 10px; }
+  .capacity-bar-wrap { margin-top: 10px; }
+  .cap-bar-track     { background: #e0e8f0; border-radius: 999px; height: 10px; overflow: hidden; width: 100%; }
+  .cap-bar-fill      { height: 100%; border-radius: 999px; transition: width 0.4s; }
+  .cap-bar-fill.cap-ok   { background: #56d364; }
+  .cap-bar-fill.cap-warn { background: #e8a020; }
+  .cap-bar-fill.cap-over { background: #e05252; }
+  .cap-info          { font-size: 12px; font-weight: 600; color: #667788; margin-top: 6px; }
+  .cap-text-over     { color: #c62828 !important; font-weight: 800 !important; }
 
 </style>
