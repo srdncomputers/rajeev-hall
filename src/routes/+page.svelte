@@ -13,8 +13,8 @@
 
   // ── Database ──────────────────────────────────────────
   const db = new Dexie('HallBookings');
-  db.version(2).stores({
-    bookings: '++id, date, client_name, phone, event_type, start_time, end_time, advance_paid, total_amount, status, notes, created_at',
+  db.version(3).stores({
+    bookings: '++id, date, client_name, phone, event_type, start_time, end_time, advance_paid, total_amount, discount_type, discount_value, final_amount, status, notes, created_at',
     settings: 'key',
   });
 
@@ -45,6 +45,18 @@
   let fTotal       = $state(0);
   let fNotes       = $state('');
   let fStatus      = $state('Confirmed');
+  let fDiscountType  = $state('none');  // none, percent, amount
+  let fDiscountValue = $state(0);
+
+  // Computed final amount
+  let fFinalAmount = $derived(() => {
+    if (fDiscountType === 'percent') {
+      return Math.max(0, fTotal - (fTotal * fDiscountValue / 100));
+    } else if (fDiscountType === 'amount') {
+      return Math.max(0, fTotal - fDiscountValue);
+    }
+    return fTotal;
+  });
 
   // View booking detail
   let viewBooking  = $state(null);
@@ -162,10 +174,12 @@
     fEndDate     = date || today();
     fStartTime   = '09:00';
     fEndTime     = '22:00';
-    fAdvance     = 0;
-    fTotal       = 0;
-    fNotes       = '';
-    fStatus      = 'Confirmed';
+    fAdvance       = 0;
+    fTotal         = 0;
+    fDiscountType  = 'none';
+    fDiscountValue = 0;
+    fNotes         = '';
+    fStatus        = 'Confirmed';
     showForm     = true;
     viewBooking  = null;
   }
@@ -179,10 +193,12 @@
     fEndDate     = b.end_date || b.date;
     fStartTime   = b.start_time || '09:00';
     fEndTime     = b.end_time   || '22:00';
-    fAdvance     = b.advance_paid || 0;
-    fTotal       = b.total_amount || 0;
-    fNotes       = b.notes || '';
-    fStatus      = b.status;
+    fAdvance       = b.advance_paid || 0;
+    fTotal         = b.total_amount || 0;
+    fDiscountType  = b.discount_type || 'none';
+    fDiscountValue = b.discount_value || 0;
+    fNotes         = b.notes || '';
+    fStatus        = b.status;
     showForm     = true;
     viewBooking  = null;
   }
@@ -199,9 +215,12 @@
       end_date:     fEndDate || fDate,
       start_time:   fStartTime,
       end_time:     fEndTime,
-      advance_paid: +fAdvance,
-      total_amount: +fTotal,
-      notes:        fNotes,
+      advance_paid:   +fAdvance,
+      total_amount:   +fTotal,
+      discount_type:  fDiscountType,
+      discount_value: +fDiscountValue,
+      final_amount:   fFinalAmount(),
+      notes:          fNotes,
       status:       fStatus,
       created_at:   today(),
     };
@@ -543,13 +562,25 @@
             <div class="di-label">💰 Total Amount</div>
             <div class="di-value green">{fmt(viewBooking.total_amount)}</div>
           </div>
+          {#if viewBooking.discount_type && viewBooking.discount_type !== 'none' && viewBooking.discount_value > 0}
+            <div class="detail-item">
+              <div class="di-label">🏷️ Discount</div>
+              <div class="di-value" style="color:#e8a020">
+                {viewBooking.discount_type === 'percent' ? viewBooking.discount_value + '%' : fmt(viewBooking.discount_value)}
+              </div>
+            </div>
+            <div class="detail-item">
+              <div class="di-label">✨ Final Amount</div>
+              <div class="di-value green">{fmt(viewBooking.final_amount)}</div>
+            </div>
+          {/if}
           <div class="detail-item">
             <div class="di-label">✅ Advance Paid</div>
             <div class="di-value green">{fmt(viewBooking.advance_paid)}</div>
           </div>
           <div class="detail-item">
             <div class="di-label">⏳ Balance Due</div>
-            <div class="di-value orange">{fmt((viewBooking.total_amount||0)-(viewBooking.advance_paid||0))}</div>
+            <div class="di-value orange">{fmt((viewBooking.final_amount||viewBooking.total_amount||0)-(viewBooking.advance_paid||0))}</div>
           </div>
           {#if viewBooking.notes}
             <div class="detail-item full">
@@ -643,10 +674,50 @@
             </div>
           </div>
 
+          <!-- Discount Section -->
+          <div class="discount-section">
+            <div class="discount-title">🏷️ Discount</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Discount Type</label>
+                <select bind:value={fDiscountType}>
+                  <option value="none">No Discount</option>
+                  <option value="percent">Percentage (%)</option>
+                  <option value="amount">Fixed Amount (₹)</option>
+                </select>
+              </div>
+              {#if fDiscountType !== 'none'}
+                <div class="form-group">
+                  <label>{fDiscountType === 'percent' ? 'Discount %' : 'Discount ₹'}</label>
+                  <input type="number" bind:value={fDiscountValue} min="0"
+                    max={fDiscountType === 'percent' ? 100 : fTotal}
+                    placeholder={fDiscountType === 'percent' ? 'e.g. 10' : 'e.g. 5000'}>
+                </div>
+              {/if}
+            </div>
+
+            {#if fTotal > 0 && fDiscountType !== 'none' && fDiscountValue > 0}
+              <div class="discount-preview">
+                <div class="dp-row">
+                  <span>Original Amount:</span>
+                  <span>{fmt(fTotal)}</span>
+                </div>
+                <div class="dp-row discount-row">
+                  <span>Discount {fDiscountType === 'percent' ? `(${fDiscountValue}%)` : ''}:</span>
+                  <span>- {fmt(fDiscountType === 'percent' ? fTotal * fDiscountValue / 100 : fDiscountValue)}</span>
+                </div>
+                <div class="dp-row final-row">
+                  <span>Final Amount:</span>
+                  <strong>{fmt(fFinalAmount())}</strong>
+                </div>
+              </div>
+            {/if}
+          </div>
+
           {#if fTotal > 0}
             <div class="balance-preview">
               <span>Balance Due:</span>
-              <strong>{fmt(fTotal - fAdvance)}</strong>
+              <strong>{fmt(fFinalAmount() - fAdvance)}</strong>
             </div>
           {/if}
 
@@ -868,4 +939,13 @@
   /* Toast */
   .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: #1a2332; color: #fff; padding: 12px 20px; border-radius: 999px; font-size: 13px; font-weight: 600; z-index: 200; white-space: nowrap; animation: fadeIn 0.2s ease; box-shadow: 0 4px 20px rgba(0,0,0,0.2); }
   .toast.toast-error { background: #c62828; }
+
+  /* Discount Section */
+  .discount-section { background: #fff8e8; border: 1.5px solid #e8a020; border-radius: 12px; padding: 14px; }
+  .discount-title   { font-size: 13px; font-weight: 700; color: #e8a020; margin-bottom: 10px; }
+  .discount-preview { background: #fff; border-radius: 10px; padding: 12px; margin-top: 10px; border: 1px solid #e8eef5; }
+  .dp-row      { display: flex; justify-content: space-between; font-size: 13px; color: #667788; padding: 4px 0; }
+  .discount-row{ color: #e05252; font-weight: 600; }
+  .final-row   { color: #1a2332; font-weight: 800; font-size: 15px; border-top: 1px solid #e8eef5; margin-top: 6px; padding-top: 8px; }
+
 </style>
