@@ -11,7 +11,7 @@
     });
   }
 
-  // ── Database ──────────────────────────────────────────
+  // ── Databases ──────────────────────────────────────────
   const db = new Dexie('HallBookings');
   db.version(2).stores({
     bookings: '++id, date, client_name, phone, event_type, start_time, end_time, advance_paid, total_amount, status, notes, created_at',
